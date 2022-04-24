@@ -5,8 +5,8 @@ from torchio import AFFINE
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import numpy as np  
-import pandas as pd  
+import numpy as np
+import pandas as pd
 import torch
 from torch.autograd import Variable
 from torch.nn import functional as F
@@ -42,6 +42,7 @@ if cuda:
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
+
 # Define label converter
 def label_converter(mask_data):
     new_masks = np.zeros(shape=mask_data.shape, dtype=np.uint8)
@@ -50,15 +51,16 @@ def label_converter(mask_data):
 
     return new_masks
 
+
 # Data loader
-def dataloader(handles, mode = 'train'):
+def dataloader(handles, mode='train'):
     # If pickle exists, load it
     try:
         with open('../inputs/flpickles/' + mode + '.pickle', 'rb') as f:
             images = pickle.load(f)
-            
+
     except:
-        
+
         images = {}
         images['Image'] = []
         images['Label'] = []
@@ -82,18 +84,18 @@ def dataloader(handles, mode = 'train'):
         add_spike = tio.RandomSpike(seed=42)
         add_ghosts = tio.RandomGhosting(intensity=1.5, seed=42)
         add_motion = tio.RandomMotion(num_transforms=6, image_interpolation='nearest', seed=42)
-        swap = tio.RandomSwap(patch_size = 7)
+        swap = tio.RandomSwap(patch_size=7)
 
         # For each image
         for idx, row in handles.iterrows():
             im_aug = []
             lb_aug = []
             gap_aug = []
-            imgs = np.zeros(shape=(1, 1,7,1024, 1024), dtype=np.float32)   # change patch shape if necessary
-            lbs = np.zeros(shape=(1, 1,7,1024, 1024), dtype=np.float32)
-            gaps = np.zeros(shape=(1, 1,7,1024, 1024), dtype=np.float32)
+            imgs = np.zeros(shape=(1, 1, 7, 1024, 1024), dtype=np.float32)  # change patch shape if necessary
+            lbs = np.zeros(shape=(1, 1, 7, 1024, 1024), dtype=np.float32)
+            gaps = np.zeros(shape=(1, 1, 7, 1024, 1024), dtype=np.float32)
             im = io.imread(row['Image'])
-            im = im / 255 # Normalization
+            im = im / 255  # Normalization
             im = np.expand_dims(im, axis=0)
             imgs[0] = im
             im_aug.append(imgs)
@@ -136,7 +138,7 @@ def dataloader(handles, mode = 'train'):
                 imgs[0] = im_swap
                 im_aug.append(imgs)
             images['Image'].append(np.array(im_aug))
-            
+
             if mode != 'test':
                 lb = io.imread(row['Label'])
                 lb = label_converter(lb)
@@ -144,7 +146,7 @@ def dataloader(handles, mode = 'train'):
                 lbs[0] = lb
                 lb_aug.append(lbs)
                 gap = io.imread(row['Gap'])
-                gap = np.expand_dims(gap, axis = 0)
+                gap = np.expand_dims(gap, axis=0)
                 gaps[0] = gap
                 gap_aug.append(gaps)
                 if mode == 'train':
@@ -215,15 +217,16 @@ def dataloader(handles, mode = 'train'):
 
     return images
 
+
 # UNet model
 class UNet_down_block(torch.nn.Module):
     def __init__(self, input_channel, output_channel, down_size):
         super(UNet_down_block, self).__init__()
-        self.conv1 = torch.nn.Conv3d(input_channel, output_channel, 3, padding=(2,1,1))
+        self.conv1 = torch.nn.Conv3d(input_channel, output_channel, 3, padding=(2, 1, 1))
         self.bn1 = torch.nn.BatchNorm3d(output_channel)
-        self.conv2 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=(1,1,1))
+        self.conv2 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=(1, 1, 1))
         self.bn2 = torch.nn.BatchNorm3d(output_channel)
-        self.conv3 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=(2,1,1))
+        self.conv3 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=(2, 1, 1))
         self.bn3 = torch.nn.BatchNorm3d(output_channel)
         self.max_pool = torch.nn.MaxPool3d(2, 2)
         self.relu = torch.nn.ReLU()
@@ -241,14 +244,14 @@ class UNet_down_block(torch.nn.Module):
 class UNet_up_block(torch.nn.Module):
     def __init__(self, prev_channel, input_channel, output_channel):
         super(UNet_up_block, self).__init__()
-        self.up_sampling = torch.nn.Upsample(scale_factor = (1, 2, 2), mode='trilinear')
+        self.up_sampling = torch.nn.Upsample(scale_factor=(1, 2, 2), mode='trilinear')
         self.conv1 = torch.nn.Conv3d(prev_channel + input_channel, output_channel, 3, padding=1)
         self.bn1 = torch.nn.BatchNorm3d(output_channel)
         self.conv2 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=1)
         self.bn2 = torch.nn.BatchNorm3d(output_channel)
         self.conv3 = torch.nn.Conv3d(output_channel, output_channel, 3, padding=1)
         self.bn3 = torch.nn.BatchNorm3d(output_channel)
-        #self.relu = torch.nn.ReLU()
+        # self.relu = torch.nn.ReLU()
 
     def forward(self, prev_feature_map, x):
         x = self.up_sampling(x)
@@ -284,7 +287,7 @@ class UNet(torch.nn.Module):
         self.up_block4 = UNet_up_block(64, 128, 64)
         self.up_block5 = UNet_up_block(32, 64, 32)
         self.up_block6 = UNet_up_block(16, 32, 16)
-        self.up_sampling = torch.nn.Upsample(scale_factor = (1, 2, 2), mode='trilinear')
+        self.up_sampling = torch.nn.Upsample(scale_factor=(1, 2, 2), mode='trilinear')
         self.last_conv1 = torch.nn.Conv3d(16, 16, 3, padding=1)
         self.last_bn = torch.nn.BatchNorm3d(16)
         self.last_conv2 = torch.nn.Conv3d(16, 1, 1, padding=0)
@@ -298,7 +301,7 @@ class UNet(torch.nn.Module):
         self.x5 = self.down_block5(self.x4)
         self.x6 = self.down_block6(self.x5)
         self.x7 = self.down_block7(self.x6)
-        self.x7 = F.relu(self.bn1(self.mid_conv1(self.x7))) 
+        self.x7 = F.relu(self.bn1(self.mid_conv1(self.x7)))
         self.x7 = F.relu(self.bn2(self.mid_conv2(self.x7)))
         self.x7 = F.relu(self.bn3(self.mid_conv3(self.x7)))
         x = self.up_block1(self.x6, self.x7)
@@ -307,12 +310,13 @@ class UNet(torch.nn.Module):
         x = self.up_block4(self.x3, x)
         x = self.up_block5(self.x2, x)
         x = self.up_block6(self.x1, x)
-        
+
         x = F.relu(self.last_bn(self.last_conv1(x)))
         x = self.last_conv2(x)
         x = self.up_sampling(x)
         return x
-    
+
+
 # Initiail weights
 def init_weights(module):
     for name, param in module.named_parameters():
@@ -324,14 +328,16 @@ def init_weights(module):
         elif name.find('bias') != -1:
             init.constant_(param.data, 0).type(torch.DoubleTensor).to(device)
 
+
 # Early stop function
-def losscp (list):
+def losscp(list):
     newlist = np.sort(list)
     if np.array_equal(np.array(list), np.array(newlist)):
         return 1
     else:
         return 0
-    
+
+
 # Dice loss function
 def dice_loss(input, target):
     smooth = 1.
@@ -364,13 +370,14 @@ def metric(y_pred, target):
     ppv = (tp) / (predicted + label - tp)
     return ppv
 
+
 # Training and validation method
 def train(bs, sample, vasample, ep, ilr, mode):
     # Initialize learning rate decay and learning rate
     lr_dec = 1
     init_lr = ilr
     torch.cuda.empty_cache()
-    #Model
+    # Model
     model = UNet()
     # initialize weight
     init_weights(model)
@@ -380,16 +387,16 @@ def train(bs, sample, vasample, ep, ilr, mode):
     opt.zero_grad()
     # train and validation samples
     rows_trn = len(sample['Label'])
-    print('rows_trn', rows_trn, flush = True)
+    print('rows_trn', rows_trn, flush=True)
     rows_val = len(vasample['Label'])
-    print('rows_val', rows_val, flush = True)
+    print('rows_val', rows_val, flush=True)
     # Batch per epoch
     batches_per_epoch = rows_trn // bs
     losslists = []
     vlosslists = []
     Fscorelist = []
     PPVlist = []
-        
+
     for epoch in range(ep):
         print(epoch, flush=True)
         # Learning rate
@@ -415,21 +422,24 @@ def train(bs, sample, vasample, ep, ilr, mode):
                 trgaa = trga[iit]
                 if mode == 'nuke':
                     label_ratio = (trlaa > 0).sum() / (
-                                trlaa.shape[1] * trlaa.shape[2] * trlaa.shape[3] * trlaa.shape[4] - (trlaa > 0).sum())
+                            trlaa.shape[1] * trlaa.shape[2] * trlaa.shape[3] * trlaa.shape[4] - (trlaa > 0).sum())
                     # If smaller than 1, add weight to positive prediction
                     if label_ratio < 1:
-                        add_weight = (trlaa[0, 0,:, :, :] + 1 / (1 / label_ratio - 1))
+                        add_weight = (trlaa[0, 0, :, :, :] + 1 / (1 / label_ratio - 1))
                         add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # If smaller than 1, add weight to negative prediction
                     elif label_ratio > 1:
-                        add_weight = (trlaa[0, 0,:, :, :] + 1 / (label_ratio - 1))
+                        add_weight = (trlaa[0, 0, :, :, :] + 1 / (label_ratio - 1))
                         add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # If equal to 1, no weight added
                     elif label_ratio == 1:
                         add_weight = (np.ones([1, 1, trlaa.shape[2], trlaa.shape[3], trlaa.shape[4]])) / 2 * 255
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # Cuda and tensor inputs and label
                     x = Variable(torch.from_numpy(trimm).type(torch.FloatTensor)).to(device)
                     y = Variable(torch.from_numpy(trlaa).type(torch.FloatTensor)).to(device)
@@ -447,21 +457,25 @@ def train(bs, sample, vasample, ep, ilr, mode):
                     tr_F_list.append(tr_F)
                     torch.cuda.empty_cache()
                 elif mode == 'gap':
-                    label_ratio = (trgaa > 0).sum() / (trgaa.shape[1] * trgaa.shape[2] * trgaa.shape[3] * trgaa.shape[4] - (trgaa > 0).sum())
+                    label_ratio = (trgaa > 0).sum() / (
+                                trgaa.shape[1] * trgaa.shape[2] * trgaa.shape[3] * trgaa.shape[4] - (trgaa > 0).sum())
                     # If smaller than 1, add weight to positive prediction
                     if label_ratio < 1:
-                        add_weight = (trgaa[0, 0,:, :, :] / 255 + 1 / (1 / label_ratio - 1))
+                        add_weight = (trgaa[0, 0, :, :, :] / 255 + 1 / (1 / label_ratio - 1))
                         add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # If smaller than 1, add weight to negative prediction
                     elif label_ratio > 1:
                         add_weight = (trgaa[0, 0, :, :, :] / 255 + 1 / (label_ratio - 1))
                         add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # If equal to 1, no weight added
                     elif label_ratio == 1:
                         add_weight = (np.ones([1, 1, trgaa.shape[2], trgaa.shape[3], trgaa.shape[4]])) / 2 * 255
-                        loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                        loss_fn = torch.nn.BCEWithLogitsLoss(
+                            weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                     # Cuda and tensor inputs and label
                     x = Variable(torch.from_numpy(trimm).type(torch.FloatTensor)).to(device)
                     y = Variable(torch.from_numpy(trgaa / 255).type(torch.FloatTensor)).to(device)
@@ -472,7 +486,7 @@ def train(bs, sample, vasample, ep, ilr, mode):
                     loss = loss_fn(pred_mask, y).cpu() + dice_loss(torch.sigmoid(pred_mask), y)
                     losslist.append(loss.data.numpy())
                     loss.backward()
- 
+
                     # ppv metric
                     tr_metric = metric(torch.sigmoid(pred_mask), y)
                     tr_metric_list.append(tr_metric)
@@ -491,22 +505,26 @@ def train(bs, sample, vasample, ep, ilr, mode):
             vala = vasample['Label'][itr][0]
             vaga = vasample['Gap'][itr][0]
             if mode == 'nuke':
-                label_ratio = (vala>0).sum() / (vala.shape[1]*vala.shape[2] * vala.shape[3] * vala.shape[4] - (vala>0).sum())
+                label_ratio = (vala > 0).sum() / (
+                            vala.shape[1] * vala.shape[2] * vala.shape[3] * vala.shape[4] - (vala > 0).sum())
                 # If smaller than 1, add weight to positive prediction
                 if label_ratio < 1:
-                    add_weight = (vala[0,0,:, :,:] + 1 / (1 / label_ratio - 1))
+                    add_weight = (vala[0, 0, :, :, :] + 1 / (1 / label_ratio - 1))
                     add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                 # If smaller than 1, add weight to negative prediction
                 elif label_ratio > 1:
-                    add_weight = (vala[0,0,:, :,:] + 1 / (label_ratio - 1))
+                    add_weight = (vala[0, 0, :, :, :] + 1 / (label_ratio - 1))
                     add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                 # If equal to 1, no weight added
                 elif label_ratio == 1:
-                    add_weight = (np.ones([1,1,vala.shape[2], vala.shape[3], vala.shape[4]]))/2 * 255
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))         
-                # cuda and tensor sample
+                    add_weight = (np.ones([1, 1, vala.shape[2], vala.shape[3], vala.shape[4]])) / 2 * 255
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    # cuda and tensor sample
                 torch.cuda.empty_cache()
                 xv = Variable(torch.from_numpy(vaim).type(torch.FloatTensor)).to(device)
                 yv = Variable(torch.from_numpy(vala).type(torch.FloatTensor)).to(device)
@@ -516,11 +534,13 @@ def train(bs, sample, vasample, ep, ilr, mode):
                 pred_np = (torch.sigmoid(pred_maskv)).cpu().data.numpy()
                 torch.cuda.empty_cache()
                 pred_np = pred_np.round().astype(np.uint8)
-                pred_np = pred_np[0, 0, :, :,:]
-                pred_t= torch.from_numpy(((pred_np / pred_np.max()) * 255).astype(np.uint8))
+                pred_np = pred_np[0, 0, :, :, :]
+                pred_t = torch.from_numpy(((pred_np / pred_np.max()) * 255).astype(np.uint8))
                 if not os.path.exists(output + '/' + mode + 'results_trainning/'):
-                        os.makedirs(output + '/' + mode + 'results_trainning/')
-                [imageio.imwrite(output + '/' + mode + 'results_trainning/' + vasample['ID'][itr] +'_'+ str(epoch) + '_%d.png' %i, pred_t[i, :, :]) for i in range(7)]
+                    os.makedirs(output + '/' + mode + 'results_trainning/')
+                [imageio.imwrite(
+                    output + '/' + mode + 'results_trainning/' + vasample['ID'][itr] + '_' + str(epoch) + '_%d.png' % i,
+                    pred_t[i, :, :]) for i in range(7)]
                 # dice and BCE loss
                 vloss = loss_fn(pred_maskv, yv).cpu() + dice_loss(torch.sigmoid(pred_maskv), yv)
                 vlosslist.append(vloss.data.numpy())
@@ -530,27 +550,31 @@ def train(bs, sample, vasample, ep, ilr, mode):
                 va_F = Fscore(torch.sigmoid(pred_maskv), yv)
                 va_F_list.append(va_F)
             elif mode == 'gap':
-                label_ratio = (vaga>0).sum() / (vaga.shape[1]*vaga.shape[2] * vaga.shape[3] * vaga.shape[4]- (vaga>0).sum())
+                label_ratio = (vaga > 0).sum() / (
+                            vaga.shape[1] * vaga.shape[2] * vaga.shape[3] * vaga.shape[4] - (vaga > 0).sum())
                 # If smaller than 1, add weight to positive prediction
                 if label_ratio < 1:
-                    add_weight = (vaga[0,0,:,:,:] / 255 + 1 / (1 / label_ratio - 1))
+                    add_weight = (vaga[0, 0, :, :, :] / 255 + 1 / (1 / label_ratio - 1))
                     add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                 # If smaller than 1, add weight to negative prediction
                 elif label_ratio > 1:
-                    add_weight = (vaga[0,0,:, :,:] / 255 + 1 / (label_ratio - 1))
+                    add_weight = (vaga[0, 0, :, :, :] / 255 + 1 / (label_ratio - 1))
                     add_weight = np.clip(add_weight / add_weight.max() * 255, 40, None)
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                 # If equal to 1, no weight added
                 elif label_ratio == 1:
-                    add_weight = (np.ones([1,1,vaga.shape[2], vaga.shape[3], vaga.shape[4]]))/2 * 255
-                    loss_fn = torch.nn.BCEWithLogitsLoss(weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
+                    add_weight = (np.ones([1, 1, vaga.shape[2], vaga.shape[3], vaga.shape[4]])) / 2 * 255
+                    loss_fn = torch.nn.BCEWithLogitsLoss(
+                        weight=torch.from_numpy(add_weight).type(torch.FloatTensor).to(device))
                 # cuda and tensor sample
                 xv = Variable(torch.from_numpy(vaim).type(torch.FloatTensor)).to(device)
                 yv = Variable(torch.from_numpy(vaga / 255).type(torch.FloatTensor)).to(device)
                 # prediction
                 pred_maskv = model(xv)
-                
+
                 # dice and BCE loss
                 vloss = loss_fn(pred_maskv, yv).cpu() + dice_loss(torch.sigmoid(pred_maskv), yv)
                 vlosslist.append(vloss.data.numpy())
@@ -587,7 +611,7 @@ def train(bs, sample, vasample, ep, ilr, mode):
                 'state_dict': model.state_dict(),
                 'optimizer': opt.state_dict(),
             }
-            torch.save(checkpoint,output + '/' + mode + 'loss_unet')
+            torch.save(checkpoint, output + '/' + mode + 'loss_unet')
         if va_Fscore == np.max(Fscorelist):
             print('Max F found:')
             print(va_Fscore)
@@ -615,20 +639,20 @@ def train(bs, sample, vasample, ep, ilr, mode):
 
         # if no change or increase in loss for consecutive 15 epochs, save validation predictions and stop training
         if epoch > 15:
-            if losscp(losslists[-15:]) or losscp(vlosslists[-15:]) or epoch+1 == ep:
+            if losscp(losslists[-15:]) or losscp(vlosslists[-15:]) or epoch + 1 == ep:
                 for itr in range(rows_val):
                     vaim = vasample['Image'][itr][0]
                     xv = Variable(torch.from_numpy(vaim).type(torch.FloatTensor)).to(device)
                     pred_maskv = model(xv)
                     pred_np = (torch.sigmoid(pred_maskv)).cpu().data.numpy()
-                    print(pred_np.shape, flush = True)
-                    ppp = pred_np[0,0,:,:,:]
+                    print(pred_np.shape, flush=True)
+                    ppp = pred_np[0, 0, :, :, :]
                     pred_np = pred_np.round().astype(np.uint8)
-                    pred_np = pred_np[0, 0, :, :,:]
+                    pred_np = pred_np[0, 0, :, :, :]
                     pww = pred_np
                     if not os.path.exists(output + '/' + mode + 'validation/'):
                         os.makedirs(output + '/' + mode + 'validation/')
-                    
+
                     if np.max(pred_np) == np.min(pred_np):
                         print('1st_BOOM!')
                         print(vasample['ID'][itr])
@@ -637,22 +661,28 @@ def train(bs, sample, vasample, ep, ilr, mode):
                             if ppp.max() == 0 or ppp.min() == 1:
                                 print('3rd_BOOM!')
                                 ppp_t = torch.from_numpy(ppp.astype(np.uint8))
-                                [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' %i, ppp_t[i, :, :]) for i in range(7)]
-                               
+                                [imageio.imwrite(
+                                    output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' % i,
+                                    ppp_t[i, :, :]) for i in range(7)]
+
                             else:
                                 ppp = (ppp / ppp.max()) * 1
                                 ppp = (ppp > 0.95).astype(np.uint8)
                                 ppp_m = torch.from_numpy(((ppp / ppp.max()) * 255).astype(np.uint8))
-                                [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' %i, ppp_m[i, :, :]) for i in range(7)]
-                               
+                                [imageio.imwrite(
+                                    output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' % i,
+                                    ppp_m[i, :, :]) for i in range(7)]
+
                         else:
                             pww_t = torch.from_numpy(((pww / pww.max()) * 255).astype(np.uint8))
-                            [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' %i, pww_t[i, :, :]) for i in range(7)]
-                           
+                            [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' % i,
+                                             pww_t[i, :, :]) for i in range(7)]
+
                     else:
-                        pred_t= torch.from_numpy(((pred_np / pred_np.max()) * 255).astype(np.uint8))
-                        [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' %i, pred_t[i, :, :]) for i in range(7)]
-                       
+                        pred_t = torch.from_numpy(((pred_np / pred_np.max()) * 255).astype(np.uint8))
+                        [imageio.imwrite(output + '/' + mode + 'validation/' + vasample['ID'][itr] + '_%d.png' % i,
+                                         pred_t[i, :, :]) for i in range(7)]
+
                 break
 
     # Loss figures
@@ -660,7 +690,7 @@ def train(bs, sample, vasample, ep, ilr, mode):
     plt.plot(vlosslists)
     plt.title('Train & Validation Loss')
     plt.legend(['Train', 'Validation'], loc='upper right')
-    plt.savefig(output + '/'+mode+'_loss.png')
+    plt.savefig(output + '/' + mode + '_loss.png')
 
 
 def vatest(vasample):
@@ -674,7 +704,7 @@ def vatest(vasample):
         out = mph.remove_small_objects(out, min_size=30, connectivity=1)
         out = mph.remove_small_holes(out, min_size=30, connectivity=2)
         save_image(output + '/validation/' + vaid + '_pred.png',
-               ((out / out.max()) * 255).astype(np.uint8))
+                   ((out / out.max()) * 255).astype(np.uint8))
 
 
 def cbtest(tesample, group):
@@ -691,7 +721,7 @@ def cbtest(tesample, group):
         out = mph.remove_small_holes(out, min_size=30, connectivity=2)
         out = ((out / out.max()) * 255).astype(np.uint8)
         save_image(output + '/final_' + group + '/' + teid + '_pred.png',
-               ((out / out.max()) * 255).astype(np.uint8))
+                   ((out / out.max()) * 255).astype(np.uint8))
         # vectorize mask
         rle = list(prob_to_rles(out))
         rles.extend(rle)
@@ -703,9 +733,11 @@ def cbtest(tesample, group):
 
     return sub
 
+
 if __name__ == '__main__':
-    # Read in files containing paths to training, validation, and testing images 
-    data = pd.read_csv('/scratch/tn709/samples.csv', header=0, usecols=['Type', 'Image', 'Label', 'Gap', 'Width', 'Height','Depth', 'ID'])
+    # Read in files containing paths to training, validation, and testing images
+    data = pd.read_csv('../inputs/samples.csv', header=0,
+                       usecols=['Type', 'Image', 'Label', 'Gap', 'Width', 'Height', 'Depth', 'ID'])
     # Split into tranning and validation
     n_rows = len(data)
     n_rows_perm = np.random.permutation(range(n_rows))
@@ -713,11 +745,11 @@ if __name__ == '__main__':
     n_rows_perm_20 = n_rows_perm[19:]
     tr = data.iloc[n_rows_perm_80]
     va = data.iloc[n_rows_perm_20]
-  
+
     # Load in images
     trsample = dataloader(tr, 'train')
     vasample = dataloader(va, 'val')
- 
+
     # training
     train(1, trsample, vasample, int(eps), float(LR), 'nuke')
     train(1, trsample, vasample, int(eps), float(LR), 'gap')
